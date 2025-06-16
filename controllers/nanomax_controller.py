@@ -8,36 +8,69 @@ import os
 import configparser
 import time
 from typing import Literal
-from pathlib import PurePath
 import logging
 import clr
-import numpy
 
-# Imports and DLL handling
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\Thorlabs.MotionControl.DeviceManagerCLI.dll")
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\Thorlabs.MotionControl.GenericMotorCLI.dll")
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\ThorLabs.MotionControl.Benchtop.StepperMotorCLI.dll")
+# DLL handling
+clr.AddReference(os.path.join(os.path.dirname(__file__), "bin", "Thorlabs.MotionControl.DeviceManagerCLI.dll"))
+clr.AddReference(os.path.join(os.path.dirname(__file__), "bin", "Thorlabs.MotionControl.GenericMotorCLI.dll"))
+clr.AddReference(os.path.join(os.path.dirname(__file__), "bin", "ThorLabs.MotionControl.Benchtop.StepperMotorCLI.dll"))
+
+# Imports from Thorlabs DLLs
 from Thorlabs.MotionControl.DeviceManagerCLI import *
 from Thorlabs.MotionControl.GenericMotorCLI import *
 from Thorlabs.MotionControl.Benchtop.StepperMotorCLI import *
 from System import Decimal  # necessary for real world units
 
-# project sub-modules imports
-try :
-    from controllers.abstractcontroller import AbsController
-    from controllers.amptek_controller import AmptekDevice
-    from controllers.utils.hdf5_utils import Hdf5Handler
-except ModuleNotFoundError :
-    from abstractcontroller import AbsController
-    from amptek_controller import AmptekDevice
-    from utils.hdf5_utils import Hdf5Handler
+# Sub-modules imports
+from abstractcontroller import AbsController
 
 # logger configuration
 logger = logging.getLogger(f'core.{__name__}')
 
 class NanoMaxController(AbsController):
+    """
+    This class provides an interface for controlling Thorlabs NanoMax300 stages
+    connected to a BSC203 benchtop controller. It manages the connection,
+    configuration, and movement of the X, Y, and Z axes, allowing for absolute
+    and relative positioning, homing, and stopping of individual or all axes.
 
-    """This class aims at controlling an NanoMax """
+    Attributes:
+        - _NANOMAX300_CHAN_ALLOC_MAP (dict): Maps controller channels to stage axes.
+        - _NANOMAX300_ORIENTATION (dict): Stores orientation (+/-) for each axis.
+        - controllers_config (configparser.ConfigParser): User-defined configuration.
+        - axis_control (dict): Holds references to axis control objects for x, y, z.
+        - connexion_established (bool): Connection status with the controller.
+
+    Methods:
+        - __init__(controllers_config):
+            Initializes the controller with user configuration and prepares axis control.
+        - start_connection():
+            Establishes connection to the NanoMax300 stages via the BSC203 controller,
+            initializes axis allocation, and enables device polling.
+        - stop_connection():
+            Disconnects from the controller and updates connection status.
+        - is_connected() -> bool:
+            Returns the current connection status.
+        - move_to(direction, target_mm, move_timeout=60000):
+            Moves the specified axis to an absolute position in millimeters.
+        - move_relative_forward(direction, step_mm, move_timeout=60000):
+            Moves the specified axis forward by a relative step in millimeters.
+        - move_relative_backward(direction, step_mm, move_timeout=60000):
+            Moves the specified axis backward by a relative step in millimeters.
+        - home_axis(direction, home_timeout=60000):
+            Homes the specified axis.
+        - stop_movement(direction):
+            Stops movement of the specified axis.
+        - is_all_axes_homed() -> bool:
+            Checks if all axes are homed.
+        - home_all_axes(timeout=60000):
+            Homes all axes sequentially.
+        - get_xyz_pos() -> tuple[float, float, float]:
+            Returns the current positions of all axes as a tuple.
+        - get_dir_pos(direction) -> int:
+            Returns the stored position of the specified axis.
+            (Internal methods for configuration and axis allocation are also provided.)"""
 
     _NANOMAX300_CHAN_ALLOC_MAP =  {
         "1" : "y",
@@ -237,6 +270,8 @@ class NanoMaxController(AbsController):
     def get_xyz_pos(self) -> tuple[float, float, float]:
         """Interogate the device to get all axes positions
         """
+        if not self.is_connected():
+            return (None, None, None)
 
         x_pos = str(self.get_dir_pos("x"))
         y_pos = str(self.get_dir_pos("y"))
@@ -250,153 +285,37 @@ class NanoMaxController(AbsController):
         """
         return self.axis_control[direction].DevicePosition
 
+    def __repr__(self):
+        return (f"<NanoMaxController("
+                f"Connected={self.connexion_established}, "
+                f"AxisControl={{'x': {self.axis_control['x']}, "
+                f"'y': {self.axis_control['y']}, "
+                f"'z': {self.axis_control['z']}}}, "
+                f"Positions={self.get_xyz_pos()})>")
 
-def main_test():
+    def __str__(self):
+        return (f"<NanoMaxController(\n"
+                f"  Connected={self.connexion_established},\n"
+                f"  AxisControl={{'x': {self.axis_control['x']},\n"
+                f"               'y': {self.axis_control['y']},\n"
+                f"               'z': {self.axis_control['z']}}},\n"
+                f"  Positions={self.get_xyz_pos()}\n"
+                f")>")
 
-    config = configparser.ConfigParser()
-    config_filepath = r"C:\Users\CXRF\Code\depthpaint-c-xrf-interface\corapp\configurations\main_config.cfg"
-    config.read(config_filepath)
-
-    nanomax_controller = NanoMaxController(config)
-    nanomax_controller.start_connection()
-
-    # print(f'{nanomax_controller.get_xyz_pos()=}')
-
-    # nanomax_controller.home_axis("x")
-    # nanomax_controller.home_axis("y")
-    # nanomax_controller.home_axis("z")
-
-    print(f'{nanomax_controller.get_xyz_pos()=}')
-
-    nanomax_controller.move_to("x", 2)
-    nanomax_controller.move_to("y", 3)
-    nanomax_controller.move_to("z", 4)
-
-    print(f'{nanomax_controller.get_xyz_pos()=}')
-
-    nanomax_controller.move_relative_forward("x", 1)
-    print(f'{nanomax_controller.get_xyz_pos()=}')
-    nanomax_controller.move_relative_forward("x", 1)
-    print(f'{nanomax_controller.get_xyz_pos()=}')
-    nanomax_controller.move_relative_forward("y", 3)
-    print(f'{nanomax_controller.get_xyz_pos()=}')
-
-def cube_scan_origin(amptek_controller: AmptekDevice, dwell_time, start_xyz, roi, x_pixel_size, x_pixel_num, y_pixel_size, y_pixel_num, z_pixel_size, z_pixel_num):
-    
-    hdf5_filepath = r"C:\Users\CXRF\Code\depthpaint-c-xrf-interface\corapp\tests\results\3d_scan\test_confocal_align.hdf5"
-
-    amptek_controller.start_connection()
-    print((x_pixel_num, y_pixel_num, z_pixel_num))
-    data_cube = numpy.zeros((x_pixel_num, y_pixel_num, z_pixel_num))
-
-    Hdf5Handler.create_empty_hdf5(hdf5_filepath, data_cube.shape, group_name="Test confocal alignment")
+def main():
 
     config = configparser.ConfigParser()
-    config_filepath = r"C:\Users\CXRF\Code\depthpaint-c-xrf-interface\corapp\configurations\main_config.cfg"
-    config.read(config_filepath)
+    config.add_section('NanoMax300')
+    config.set('NanoMax300', 'channel_1', 'y')
+    config.set('NanoMax300', 'channel_2', 'x')
+    config.set('NanoMax300', 'channel_3', 'z')
+    config.set('NanoMax300', 'nanomax300_orientation_x', '0')
+    config.set('NanoMax300', 'nanomax300_orientation_y', '0')
+    config.set('NanoMax300', 'nanomax300_orientation_z', '0')
 
     nanomax_controller = NanoMaxController(config)
-    nanomax_controller.start_connection()
-
-    start_x, start_y, start_z = start_xyz
-    print(f'{start_x=}, {start_y=}, {start_z=}')
-    
-    nanomax_controller.move_to("x", start_x)
-    nanomax_controller.move_to("y", start_y)
-    nanomax_controller.move_to("z", start_z)
-
-    amptek_controller.enable_mca_mcs()
-    time.sleep(0.1)
-    maximum = 0
-    max_xyz = (0., 0., 0.)
-    
-    t_start = time.perf_counter()
-    
-    for x in range(x_pixel_num):
-        print(f'Time spent : {time.perf_counter() - t_start}')
-        max_chan, int_spectrum, _ = amptek_controller.get_spectrum(get_status=False, clear_spectrum=True)
-        for y in range(y_pixel_num):
-            max_chan, int_spectrum, _ = amptek_controller.get_spectrum(get_status=False, clear_spectrum=True)
-            for z in range(z_pixel_num):
-                
-                # max_chan, int_spectrum, _ = amptek_controller.get_spectrum(get_status=False, clear_spectrum=True)
-                time.sleep(dwell_time / 1000)
-                max_chan, int_spectrum, _ = amptek_controller.get_spectrum(get_status=False, clear_spectrum=True)
-
-                current_xyz = nanomax_controller.get_xyz_pos()
-                # Change the ROI here
-                sum_spectrum = sum(int_spectrum[roi[0] : roi[1]])
-
-                if sum_spectrum > maximum :
-                    maximum = sum_spectrum
-                    max_xyz = current_xyz
-                    print(f'{maximum=}, {max_xyz=}')
-
-                x_index = int(x)
-                y_index = int(y)
-                z_index = int(z)
-                data_cube[x_index,y_index,z_index] = sum_spectrum
-
-                nanomax_controller.move_relative_forward("z", z_pixel_size)
-                print(f'{x, y, z}, {maximum=}, {current_xyz=}')
-
-            nanomax_controller.move_relative_forward("y", y_pixel_size)
-            nanomax_controller.move_to("z", start_z)
-
-        Hdf5Handler.save_data_to_hdf5(hdf5_filepath, data_cube, [0,1,0], project_name="Test confocal alignment")
-        nanomax_controller.move_relative_forward("x", x_pixel_size)
-        nanomax_controller.move_to("y", start_y)
-
-    amptek_controller.disable_mca_mcs()
-    amptek_controller.stop_connection()
-
-    print(f'{maximum=}, {max_xyz=}')
-    Hdf5Handler.visualize_3d_mapping(hdf5_filepath, data_cube.shape, group_name="Test confocal alignment")
-
-    return data_cube
-
-def cube_scan_center(amptek_controller: AmptekDevice, dwell_time, center, roi, x_pixel_size, x_range, y_pixel_size, y_range, z_pixel_size, z_range):
-    """Start a cube scan around the given center"""
-    x_origin = center[0] - x_range / 2
-    y_origin = center[1] - y_range / 2
-    z_origin = center[2] - z_range / 2
-
-    x_pixel_num = round(x_range / x_pixel_size)
-    y_pixel_num = round(y_range / y_pixel_size)
-    z_pixel_num = round(z_range / z_pixel_size)
-
-    return cube_scan_origin(amptek_controller,
-                            dwell_time=dwell_time,
-                            start_xyz=(x_origin, y_origin, z_origin),
-                            roi=roi,
-                                x_pixel_size=x_pixel_size, x_pixel_num=x_pixel_num,
-                                y_pixel_size=y_pixel_size, y_pixel_num=y_pixel_num,
-                                z_pixel_size=z_pixel_size, z_pixel_num=z_pixel_num
-                                )
-
-def test_cube_scan_center():
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    idvendor_cxrf = "0x10c4"
-    idproduct_cxrf = "0x842a"
-    researched_sn_cxrf = "36133"
-
-    amptek_cxrf_controller = AmptekDevice(idvendor_cxrf,
-                                            idproduct_cxrf,
-                                            researched_sn_cxrf,
-                                            maxrf_device=False)
-
-    data_cube = cube_scan_center(amptek_cxrf_controller,
-                                    dwell_time=50,
-                                    center=(3.690, 3.950, 2.900),
-                                    roi=[0, 511],
-                                    x_pixel_size=0.020, x_range=0.100,
-                                    y_pixel_size=0.020, y_range=0.200,
-                                    z_pixel_size=0.020, z_range=0.200)
-
-    print("data cube shape : ", data_cube.shape)
+    print(nanomax_controller)
 
 if __name__ == "__main__":
-    
-    test_cube_scan_center()
+
+    main()

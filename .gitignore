@@ -13,11 +13,11 @@ tmp/*
 # Local tests
 test_*.py
 
-# Pyinstaller files
+# Distribution / packaging
+*.egg-info
 build/
 dist/
 *.spec
-*.egg-info
 
 # vscode
 .vscode/*

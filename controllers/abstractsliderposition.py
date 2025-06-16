@@ -1,7 +1,6 @@
 
 # Pymca imports
 from PyQt5.QtWidgets import QAbstractSlider, QLCDNumber
-from PyQt5.QtGui import QColor
 
 class AbsSliderPosition(QAbstractSlider):
 

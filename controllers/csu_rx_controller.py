@@ -2,7 +2,6 @@
 # Standard imports
 import logging
 import configparser
-import socket
 
 # Third-party imports
 import csu2controller
@@ -11,6 +10,24 @@ import csu2controller
 logger = logging.getLogger(f'core.{__name__}')
 
 class RXController(csu2controller.CSU2Controller):
+    """RXController is a subclass of csu2controller.CSU2Controller designed to manage the connection and control of a CSU RX Controller device via a socket interface.
+    
+    Attributes:
+        ERROR_CODES (dict): A mapping of error codes (as strings) to their corresponding human-readable error messages.
+    
+    Methods:
+        __init__(controllers_config: configparser.ConfigParser):
+            Initializes the RXController with the provided configuration, setting up the IP address and port for socket communication.
+        start_connection() -> None:
+            Attempts to establish a socket connection with the CSU RX Controller. Raises ConnectionError if the device cannot be found or is occupied.
+        stop_connection() -> None:
+            Safely disconnects from the CSU RX Controller, ensuring the shutter is closed and high voltage is powered off before disconnecting.
+        is_connected() -> bool:
+            Returns True if the connection to the CSU RX Controller is established, otherwise False.
+        is_socket_closed() -> bool:
+            Checks if the socket connection is closed. Returns True if closed or if an exception occurs during the check.
+        query_is_shutter_open() -> bool:
+            Queries the CSU RX Controller to determine if the shutter is open. Returns True if open, otherwise False."""
 
     ERROR_CODES = { 
                     '1111' : "Safety line at housing not connected (RJ45 connector)",
@@ -98,17 +115,32 @@ class RXController(csu2controller.CSU2Controller):
 
         str_shutter_state = self.query_shutter_state()
         return True if str_shutter_state in ('+',) else False
-
-def module_test():
-
-    CONTROLLERS_CONFIG = configparser.ConfigParser()
-    config_filename = "C:\\Users\\CXRF\\Code\\depthpaint-c-xrf-interface\\corapp\\configurations\\main_config.cfg"
-    CONTROLLERS_CONFIG.read(config_filename)
-
-    rx_controller = RXController(CONTROLLERS_CONFIG)
     
-    rx_controller.connect()
-    resp = rx_controller.query_error_code()
+    def __repr__(self):
+        return (f"<RXController("
+                f"IP={self.ip_address!r}, "
+                f"Port={self.port}, "
+                f"Connected={self.connexion_established}, "
+                f"SocketClosed={self.is_socket_closed()})>")
+
+    def __str__(self):
+        return (f"<RXController(\n"
+                f"  IP={self.ip_address!r},\n"
+                f"  Port={self.port},\n"
+                f"  Connected={self.connexion_established},\n"
+                f"  SocketClosed={self.is_socket_closed()}\n"
+                f")>")
+    
+def main():
+
+    config = configparser.ConfigParser()
+    config.add_section('CSU_RX_Control')
+    config.set('CSU_RX_Control', 'csu_socket_ip', '192.168.1.3')
+    config.set('CSU_RX_Control', 'csu_socket_port', '23')
+
+    rx_controller = RXController(config)
+    
+    print(rx_controller)
 
 if __name__ == "__main__":
-    module_test()
+    main()

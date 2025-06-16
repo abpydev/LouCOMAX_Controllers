@@ -8,27 +8,17 @@ __all__ = ["AmptekDevice"]
 # Standard imports
 import struct
 import time
-import os
-from pathlib import Path
-import random
 import logging
 import numpy
+import configparser
 
 # Third-party imports
 from overrides import override
 import usb.core
 import usb.util
 
-# Importing project modules
-try :
-    from controllers.abstractcontroller import AbsController
-    from controllers.threads.control_threads import SpectrumSeriesAcqJob
-    from controllers.utils.hdf5_utils import Hdf5Handler
-except ModuleNotFoundError :
-    # For testing purpose
-    from corapp.controllers.abstractcontroller import AbsController
-    from corapp.controllers.threads.control_threads import SpectrumSeriesAcqJob
-    from corapp.controllers.utils.hdf5_utils import Hdf5Handler
+# Sub modules
+from abstractcontroller import AbsController
 
 # Setting up logging
 logger = logging.getLogger(f'core.{__name__}')
@@ -68,10 +58,61 @@ _CONF_PARAMS_MCA800D = {"RESC": "Reset Configuration",
                         "TPFA": "Fast channel peaking time",
                         "AINP": "Analog input pos/neg"}
 
-# Defining the AmptekDevice class
 class AmptekDevice(AbsController):
+    """
+    A controller class for interfacing with Amptek USB-based spectrometer devices.
+    
+    Provides methods for device connection, spectrum acquisition, hardware configuration, 
+    calibration, and status management. Supports both CXRF and 2DXRF sensor configurations.
 
-    """This class is a device controller for Amptek Device"""
+    Attributes:
+        _SPECTRUM_SIZE_VS_CHANNEL (dict): Mapping of spectrum size based on channel.
+        idvendor (int): USB vendor ID.
+        idproduct (int): USB product ID.
+        connexion_established (bool): Connection status flag.
+        status (_AmptekStatus): Device status object.
+        endpoint2_out (str): USB endpoint for outgoing commands.
+        endpoint1_in (str): USB endpoint for incoming data.
+        cmd_timeout (str): Command timeout value.
+        answer_timeout (str): Answer timeout value.
+        chan_num (int): Number of channels in the spectrum.
+        last_spectrum (list[int]): Last acquired spectrum.
+        is_maxrf_device (bool): Flag for MaxRF device type.
+        researched_sn (str): Serial number to search for.
+        calibration (dict): Calibration coefficients and order.
+        map_data (numpy.ndarray): Data array for mapping spectra.
+    
+    Methods:
+        __init__(config, maxrf_device=False): Initialize the device with configuration.
+        init_new_maxrf_mapping(num_pixels_per_line, num_pixels_per_col): Initialize mapping data for MaxRF.
+        get_chan_num(): Return the number of channels.
+        get_map_data(): Return the mapping data array.
+        get_spectrum(get_status=False, clear_spectrum=False): Acquire a spectrum from the device.
+        _get_spectrums_series(dwell_time, acq_number, series_index): Acquire a series of spectra and store in map_data.
+        get_hardware_config(): Retrieve hardware configuration from the device.
+        set_configuration(configuration=None): Set the active USB configuration.
+        set_calibration(calib_a, calib_b, calib_c, order): Set calibration coefficients.
+        get_calibration(): Get current calibration coefficients.
+        update_status(): Update device status from hardware.
+        get_status(): Return the current device status.
+        query_sn(): Query the device serial number.
+        hardware_config_to_string(): Return a string representation of hardware configuration.
+        enable_mca_mcs(): Enable MCA/MCS acquisition on the device.
+        disable_mca_mcs(): Disable MCA/MCS acquisition on the device.
+        stop_scan(): Stop acquisition and turn off device acquisition.
+        _set_device_config(device_param, param_value): Send a configuration parameter to the device.
+        _write_cmd(req_pid1, req_pid2, data): Write a raw command to the device.
+        _read_answer(): Read and validate the device's response.
+        _check_ok_ack_packet(): Check for an "Acknowledge OK" packet from the device.
+        _checksum(data): Calculate checksum for a data buffer.
+        _packint(short_int): Pack an integer into 2 bytes (big endian).
+        _packmsg(header, data): Prepare a message for sending to the device.
+        _unpackint(twobytes): Unpack 2 bytes into an integer (big endian).
+        _custom_sleep_ms(milliseconds): Accurate sleep for a given number of milliseconds.
+        start_connection(): Initialize USB connection to the device.
+        stop_connection(): Release and dispose of USB resources.
+        __repr__(): Return a string representation for debugging.
+        __str__(): Return a formatted string representation."""
 
     # Mapping of spectrum size based on channel
     _SPECTRUM_SIZE_VS_CHANNEL = {"1": 255,
@@ -87,12 +128,24 @@ class AmptekDevice(AbsController):
                                  "11": 8191,
                                  "12": 8191}
 
-    def __init__(self, idvendor, idproduct, researched_sn,
-                 endpoint1_in=129, endpoint2_out=2, cmd_timeout=5,
-                 answer_timeout=5, maxrf_device=False) -> None:
+    def __init__(self, config:configparser.ConfigParser, maxrf_device=False) -> None:
+
+        if maxrf_device : 
+            section = '2DXRF_Sensor'
+        else:
+            section = 'CXRF_Sensor'
+
+        product_id = config.get(section, 'product_id')
+        vendor_id = config.get(section, 'vendor_id')
+        serial_number = config.get(section, 'serial_number')
+        endpoint1_in = config.get(section, 'endpoint1_in')
+        endpoint2_out = config.get(section, 'endpoint2_out')
+        cmd_timeout = config.get(section, 'cmd_timeout')
+        answer_timeout = config.get(section, 'answer_timeout')
+
         # Initialize the device and its parameters
-        self.idvendor = int(idvendor, 0)
-        self.idproduct = int(idproduct, 0)
+        self.idvendor = int(product_id, 0)
+        self.idproduct = int(vendor_id, 0)
         self.connexion_established = False
 
         self.status = _AmptekStatus()
@@ -103,7 +156,7 @@ class AmptekDevice(AbsController):
         self.chan_num = 512
         self.last_spectrum = 0
         self.is_maxrf_device = maxrf_device
-        self.researched_sn = researched_sn
+        self.researched_sn = serial_number
 
         self.calibration = {
             'order': 1,
@@ -605,6 +658,25 @@ class AmptekDevice(AbsController):
         usb.util.dispose_resources(self.device)
         self.connexion_established = False
 
+    def __repr__(self):
+        return (f"<AmptekDevice("
+                f"VendorID={hex(self.idvendor)}, "
+                f"ProductID={hex(self.idproduct)}, "
+                f"SerialNumber={self.researched_sn}, "
+                f"Connected={self.connexion_established}, "
+                f"Channels={self.chan_num}, "
+                f"MaxRF={self.is_maxrf_device})>")
+
+    def __str__(self):
+        return (f"<AmptekDevice(\n"
+                f"  VendorID={hex(self.idvendor)},\n"
+                f"  ProductID={hex(self.idproduct)},\n"
+                f"  SerialNumber={self.researched_sn},\n"
+                f"  Connected={self.connexion_established},\n"
+                f"  Channels={self.chan_num},\n"
+                f"  MaxRF={self.is_maxrf_device}\n"
+                f")>")
+
 class _AmptekStatus(dict):
 
     _DEVICES_ID = {
@@ -739,5 +811,32 @@ class _AmptekStatus(dict):
         return num
 
 
+def main():
+    
+    config = configparser.ConfigParser()
+    config.add_section('2DXRF_Sensor')
+    config.set('2DXRF_Sensor', 'product_id', '0x842a')
+    config.set('2DXRF_Sensor', 'vendor_id', '0x10c4')
+    config.set('2DXRF_Sensor', 'serial_number', '35950')
+    config.set('2DXRF_Sensor', 'endpoint1_in', '129')
+    config.set('2DXRF_Sensor', 'endpoint2_out', '2')
+    config.set('2DXRF_Sensor', 'cmd_timeout', '5')
+    config.set('2DXRF_Sensor', 'answer_timeout', '5')
+
+    config.add_section('CXRF_Sensor')
+    config.set('CXRF_Sensor', 'product_id', '0x842a')
+    config.set('CXRF_Sensor', 'vendor_id', '0x10c4')
+    config.set('CXRF_Sensor', 'serial_number', '36133')
+    config.set('CXRF_Sensor', 'endpoint1_in', '129')
+    config.set('CXRF_Sensor', 'endpoint2_out', '2')
+    config.set('CXRF_Sensor', 'cmd_timeout', '5')
+    config.set('CXRF_Sensor', 'answer_timeout', '5')
+
+    amptekcontroller1 = AmptekDevice(config, maxrf_device=True)
+    amptekcontroller2 = AmptekDevice(config, maxrf_device=False)
+
+    print(amptekcontroller1)
+    print(amptekcontroller2)
+
 if __name__ == "__main__":
-    pass
+    main()
