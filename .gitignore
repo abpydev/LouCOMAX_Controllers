@@ -1,0 +1,23 @@
+# Virtual environment files
+*_venv
+
+# Pycache
+__pycache__
+
+# Log files
+*.log
+
+# temporary files
+tmp/*
+
+# Local tests
+test_*.py
+
+# Pyinstaller files
+build/
+dist/
+*.spec
+*.egg-info
+
+# vscode
+.vscode/*
