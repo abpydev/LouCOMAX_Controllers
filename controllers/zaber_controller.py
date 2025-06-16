@@ -20,12 +20,12 @@ from zaber_motion.exceptions.movement_failed_exception import MovementFailedExce
 from PyQt5.QtWidgets import QLCDNumber, QApplication, QMainWindow
 
 # Sub-modules imports
-from abstractcontroller import AbsController
-from abstractsliderposition import AbsSliderPosition
-from threads.control_threads import CyclicJob
-from lasercontroller import LaserController
-from exceptions import ControllersException
-from utils.pid_controller import PIDController
+from .abstractcontroller import AbsController
+from .abstractsliderposition import AbsSliderPosition
+from .threads.control_threads import CyclicJob
+from .lasercontroller import LaserController
+from .exceptions import ControllersException
+from .utils.pid_controller import PIDController
 
 # logger configuration
 logger = logging.getLogger(f'core.{__name__}')

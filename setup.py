@@ -2,15 +2,15 @@ from setuptools import setup, find_packages
 
 setup(
     name="LouCOMAX_Controllers",
-    version="0.1.0",
+    version="0.3.0",
     description="Controllers for all devices used in the LouCOMAX (CNRS) project",
     author="BLASIAK Antoine",
     author_email="antoineblasiak66@gmail.com",
-    packages=find_packages(),
+    packages=["controllers", "controllers.exceptions", "controllers.utils", "controllers.threads"],
     install_requires=[
         "numpy",
         "overrides",
-        "clr",
+        "pythonnet",
         "pyusb",
         "pyserial",
         "PyQt5",

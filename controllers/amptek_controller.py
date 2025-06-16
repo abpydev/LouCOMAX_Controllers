@@ -18,7 +18,7 @@ import usb.core
 import usb.util
 
 # Sub modules
-from abstractcontroller import AbsController
+from .abstractcontroller import AbsController
 
 # Setting up logging
 logger = logging.getLogger(f'core.{__name__}')

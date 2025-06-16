@@ -13,9 +13,9 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QLCDNumber, QWidget
 
 # project sub-modules imports
-from threads.control_threads import CyclicJob
-from abstractsliderposition import AbsSliderPosition
-from exceptions.ControllersException import LaserNotConnected
+from .threads.control_threads import CyclicJob
+from .abstractsliderposition import AbsSliderPosition
+from .exceptions.ControllersException import LaserNotConnected
 
 # logger configuration
 logger = logging.getLogger(f'core.{__name__}')
