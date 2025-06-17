@@ -1,4 +1,5 @@
 
+# Third-party imports
 import configparser
 
 class ConfigFileParser(configparser.ConfigParser):

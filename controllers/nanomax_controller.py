@@ -23,7 +23,7 @@ from Thorlabs.MotionControl.Benchtop.StepperMotorCLI import *
 from System import Decimal  # necessary for real world units
 
 # Sub-modules imports
-from abstractcontroller import AbsController
+from .abstractcontroller import AbsController
 
 # logger configuration
 logger = logging.getLogger(f'core.{__name__}')

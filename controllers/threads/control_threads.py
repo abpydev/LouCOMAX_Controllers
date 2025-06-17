@@ -1,8 +1,8 @@
 
 __all__ = ["SpectrumSeriesAcqJob", "CyclicJob", "MappingJob"]
 
-import threading, signal, time
-from PyQt5.QtCore import QThread, pyqtSignal
+import threading
+from PyQt5.QtCore import pyqtSignal
 
 import logging
 logger = logging.getLogger(f'core.{__name__}')
